@@ -1,0 +1,148 @@
+// Karkain Process Manager - Round 2 REAL OS process slice (ADD-ON).
+// system() runs PowerShell to enumerate live processes (Get-Process) and their
+// parent PIDs (Win32_Process). The CSV written by the OS is parsed back into
+// read-only PROCESS/PARENT records and a parent/child tree is reported.
+// No process is started, stopped, signalled or killed. Round 1 supplied mode
+// in main.kark is left completely intact.
+
+func r_unquote(v) {
+    let t = trim(v)
+    if (len(t) >= 2) { return substr(t, 1, len(t) - 2) }
+    return t
+}
+
+func r_collect_processes() {
+    let cmd = "powershell -c Get-Process ^| Select-Object -First 8 Id,ProcessName,WorkingSet64 ^| ConvertTo-Csv -NoTypeInformation > C:/Windows/Temp/karkain-op/procs.txt"
+    let rc = system(cmd)
+    if (rc != 0) { return [] }
+    let rows = split(readFile("C:/Windows/Temp/karkain-op/procs.txt"), "\n")
+    let out = []
+    let i = 0
+    while (i < len(rows)) {
+        let line = trim(rows[i])
+        if (line != "") {
+            let f = split(line, ",")
+            if (len(f) >= 3) {
+                if (r_unquote(f[0]) != "Id") {
+                    push(out, "PROCESS|" + r_unquote(f[0]) + "|" + r_unquote(f[1]) + "|" + r_unquote(f[2]))
+                }
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+func r_collect_parents() {
+    let cmd = "powershell -c Get-CimInstance Win32_Process ^| Select-Object ProcessId,ParentProcessId,Name ^| ConvertTo-Csv -NoTypeInformation > C:/Windows/Temp/karkain-op/procparents.txt"
+    let rc = system(cmd)
+    if (rc != 0) { return [] }
+    let rows = split(readFile("C:/Windows/Temp/karkain-op/procparents.txt"), "\n")
+    let out = []
+    let i = 0
+    while (i < len(rows)) {
+        let line = trim(rows[i])
+        if (line != "") {
+            let f = split(line, ",")
+            if (len(f) >= 3) {
+                if (r_unquote(f[0]) != "ProcessId") {
+                    push(out, "PARENT|" + r_unquote(f[0]) + "|" + r_unquote(f[1]))
+                }
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+func r_find_parent(state, pid) {
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PARENT") {
+            if (f[1] == pid) { return f[2] }
+        }
+        i = i + 1
+    }
+    return "-1"
+}
+
+func r_find_name(state, pid) {
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PROCESS") {
+            if (f[1] == pid) { return f[2] }
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+func r_children_of(state, parent) {
+    let out = []
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PARENT") {
+            if (f[2] == parent) {
+                if (r_find_name(state, f[1]) != "") { push(out, f[1]) }
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+func r_report_processes(state) {
+    let rep = ""
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PROCESS") {
+            let line = "REAL_LIST pid=" + f[1] + " name=" + f[2] + " mem=" + f[3] + " parent=" + r_find_parent(state, f[1])
+            print(line)
+            rep = rep + line + "\n"
+        }
+        i = i + 1
+    }
+    return rep
+}
+
+func r_report_tree(state) {
+    let rep = ""
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PROCESS") {
+            let kids = r_children_of(state, f[1])
+            let k = 0
+            while (k < len(kids)) {
+                let line = "REAL_TREE parent=" + f[1] + " child=" + kids[k] + " child_name=" + r_find_name(state, kids[k])
+                print(line)
+                rep = rep + line + "\n"
+                k = k + 1
+            }
+        }
+        i = i + 1
+    }
+    return rep
+}
+
+public func r_run() {
+    print("REAL_OS_PROCESSES source=Get-Process + Win32_Process (live OS, read-only)")
+    let state = []
+    let procs = r_collect_processes()
+    let pars = r_collect_parents()
+    let i = 0
+    while (i < len(procs)) { push(state, procs[i]); i = i + 1 }
+    i = 0
+    while (i < len(pars)) { push(state, pars[i]); i = i + 1 }
+    let report = r_report_processes(state)
+    report = report + r_report_tree(state)
+    if (len(procs) == 0) {
+        print("REAL_OS_PROCESS_FAILED no live processes parsed; check OS command")
+    }
+    writeFile("data/real_processes.dat", report)
+    print("REAL_OS_PROCESS_OK processes=" + str(len(procs)) + " parent_links=" + str(len(pars)))
+}

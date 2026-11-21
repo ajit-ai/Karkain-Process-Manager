@@ -3,6 +3,11 @@
 // Real OS process enumeration is NOT implemented: this program never queries
 // an operating system for processes. There is no start/stop/kill capability;
 // the model only inspects records supplied by the caller.
+//
+// Round 2 ADD-ON: a live OS process slice is provided in real_os.kark and is
+// dispatched from main() below. The Round 1 supplied-sample logic and all of
+// its output lines are preserved unchanged.
+import real_os
 
 func load_state(path) {
     let lines = split(readFile(path), "\n")
@@ -183,4 +188,5 @@ func main() {
     persist(state_path, state)
     persist(report_path, split(report, "\n"))
     print("PROCESS_MANAGER_OK processes=" + str(count_processes(state)))
+    real_os.r_run()
 }

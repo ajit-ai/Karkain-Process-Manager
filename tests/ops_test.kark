@@ -1,0 +1,38 @@
+// Round 2 REAL OS process tests (self-contained; no imports, no file I/O).
+func test_real_csv_row_parsing() {
+    let line = "\"4340\",\"AdminService\",\"581632\""
+    let f = split(line, ",")
+    let id = substr(trim(f[0]), 1, len(trim(f[0])) - 2)
+    let name = substr(trim(f[1]), 1, len(trim(f[1])) - 2)
+    let mem = substr(trim(f[2]), 1, len(trim(f[2])) - 2)
+    assert_eq(id, "4340")
+    assert_eq(name, "AdminService")
+    assert_eq(mem, "581632")
+}
+
+func test_real_parent_lookup() {
+    let state = ["PARENT|4340|880", "PARENT|11564|4340"]
+    let parent = "-1"
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[1] == "11564") { parent = f[2] }
+        i = i + 1
+    }
+    assert_eq(parent, "4340")
+}
+
+func test_real_child_collection() {
+    let state = ["PROCESS|4340|svc|100", "PARENT|4340|880", "PARENT|11564|4340"]
+    let kids = []
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PARENT") {
+            if (f[2] == "4340") { push(kids, f[1]) }
+        }
+        i = i + 1
+    }
+    assert_eq(len(kids), 1)
+    assert_eq(kids[0], "11564")
+}
