@@ -1,0 +1,186 @@
+// Karkain Process Manager - first functional slice.
+// Read-only process inventory over SUPPLIED records in data/commands.dat.
+// Real OS process enumeration is NOT implemented: this program never queries
+// an operating system for processes. There is no start/stop/kill capability;
+// the model only inspects records supplied by the caller.
+
+func load_state(path) {
+    let lines = split(readFile(path), "\n")
+    let out = []
+    let i = 0
+    while (i < len(lines)) {
+        let line = trim(lines[i])
+        if (line != "") { push(out, line) }
+        i = i + 1
+    }
+    return out
+}
+
+func persist(path, records) {
+    let out = ""
+    let i = 0
+    while (i < len(records)) {
+        out = out + records[i] + "\n"
+        i = i + 1
+    }
+    writeFile(path, out)
+}
+
+func put_process(state, pid, name, mem) {
+    let rec = "PROCESS|" + str(pid) + "|" + name + "|" + str(mem)
+    let out = []
+    let i = 0
+    let replaced = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PROCESS") {
+            if (int(f[1]) == pid) { push(out, rec); replaced = 1 } else { push(out, state[i]) }
+        } else { push(out, state[i]) }
+        i = i + 1
+    }
+    if (replaced == 0) { push(out, rec) }
+    return out
+}
+
+func put_parent(state, pid, ppid) {
+    let rec = "PARENT|" + str(pid) + "|" + str(ppid)
+    let out = []
+    let i = 0
+    let replaced = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PARENT") {
+            if (int(f[1]) == pid) { push(out, rec); replaced = 1 } else { push(out, state[i]) }
+        } else { push(out, state[i]) }
+        i = i + 1
+    }
+    if (replaced == 0) { push(out, rec) }
+    return out
+}
+
+func find_process(state, pid) {
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PROCESS") {
+            if (int(f[1]) == pid) { return f[2] }
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+func find_parent(state, pid) {
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PARENT") {
+            if (int(f[1]) == pid) { return int(f[2]) }
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+func children_of(state, parent) {
+    let out = []
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PARENT") {
+            if (int(f[2]) == parent) { push(out, int(f[1])) }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+func drop_first(arr) {
+    let out = []
+    let i = 1
+    while (i < len(arr)) {
+        push(out, arr[i])
+        i = i + 1
+    }
+    return out
+}
+
+func tree_report(state, root) {
+    let rep = ""
+    let queue = [root]
+    while (len(queue) > 0) {
+        let pid = queue[0]
+        queue = drop_first(queue)
+        let name = find_process(state, pid)
+        let line = "TREE pid=" + str(pid) + " name=" + name + " parent=" + str(find_parent(state, pid))
+        print(line)
+        rep = rep + line + "\n"
+        let kids = children_of(state, pid)
+        let i = 0
+        while (i < len(kids)) {
+            push(queue, kids[i])
+            i = i + 1
+        }
+    }
+    return rep
+}
+
+func list_report(state) {
+    let rep = ""
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PROCESS") {
+            let line = "LIST pid=" + f[1] + " name=" + f[2] + " mem=" + f[3] + " parent=" + str(find_parent(state, int(f[1])))
+            print(line)
+            rep = rep + line + "\n"
+        }
+        i = i + 1
+    }
+    return rep
+}
+
+func count_processes(state) {
+    let n = 0
+    let i = 0
+    while (i < len(state)) {
+        let f = split(state[i], "|")
+        if (f[0] == "PROCESS") { n = n + 1 }
+        i = i + 1
+    }
+    return n
+}
+
+func main() {
+    let cmd_path = "data/commands.dat"
+    let state_path = "data/state.dat"
+    let report_path = "data/report.dat"
+    print("NOTICE real OS process enumeration is NOT implemented; read-only supplied records only")
+    let cmds = split(readFile(cmd_path), "\n")
+    let state = load_state(state_path)
+    let report = ""
+    let i = 0
+    while (i < len(cmds)) {
+        let line = trim(cmds[i])
+        if (line != "") {
+            let f = split(line, "|")
+            let op = f[0]
+            if (op == "PROCESS") {
+                state = put_process(state, int(f[1]), f[2], int(f[3]))
+            }
+            if (op == "PARENT") {
+                state = put_parent(state, int(f[1]), int(f[2]))
+            }
+            if (op == "TREE") {
+                report = report + tree_report(state, int(f[1]))
+            }
+            if (op == "LIST") {
+                report = report + list_report(state)
+            }
+        }
+        i = i + 1
+    }
+    persist(state_path, state)
+    persist(report_path, split(report, "\n"))
+    print("PROCESS_MANAGER_OK processes=" + str(count_processes(state)))
+}

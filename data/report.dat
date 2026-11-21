@@ -1,0 +1,10 @@
+TREE pid=1000 name=init parent=-1
+TREE pid=1200 name=scheduler parent=1000
+TREE pid=1300 name=worker parent=1000
+TREE pid=1400 name=worker parent=1200
+TREE pid=1500 name=agent parent=1300
+LIST pid=1000 name=init mem=0 parent=-1
+LIST pid=1200 name=scheduler mem=4 parent=1000
+LIST pid=1300 name=worker mem=16 parent=1000
+LIST pid=1400 name=worker mem=20 parent=1200
+LIST pid=1500 name=agent mem=8 parent=1300
